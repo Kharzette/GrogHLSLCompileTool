@@ -1,17 +1,12 @@
 ﻿using System.IO;
+using System.Threading.Tasks;
 using System.Diagnostics;
 
-	//entry points for shaders
+//entry points for shaders
 Dictionary<string, List<string>>	mVSEntryPoints	=new Dictionary<string, List<string>>();
 Dictionary<string, List<string>>	mPSEntryPoints	=new Dictionary<string, List<string>>();
 
-//compiled shader bytecode
-Dictionary<string, byte[]>	mVSCode	=new Dictionary<string, byte[]>();
-Dictionary<string, byte[]>	mPSCode	=new Dictionary<string, byte[]>();
-Dictionary<string, byte[]>	mGSCode	=new Dictionary<string, byte[]>();
-Dictionary<string, byte[]>	mDSCode	=new Dictionary<string, byte[]>();
-Dictionary<string, byte[]>	mHSCode	=new Dictionary<string, byte[]>();
-Dictionary<string, byte[]>	mCSCode	=new Dictionary<string, byte[]>();
+List<string>	includeNames	=new List<string>();
 
 
 string	VersionString(string sm)
@@ -51,17 +46,109 @@ string	ProfileFromSM(string sm, ShaderEntryType set)
 }
 
 
+string	FixWinePaths(string winePath)
+{
+	if(!winePath.StartsWith("Z:"))
+	{
+		//maybe ok?
+		return	winePath;
+	}
+
+	//fullpath
+//	return	winePath.Substring(2);
+
+	//relative
+	//locate final \
+	int	slashPos	=winePath.LastIndexOf('\\');
+//	return	"${workspaceFolder}/ShaderLib/" + winePath.Substring(slashPos + 1);
+	return	"ShaderLib/" + winePath.Substring(slashPos + 1);
+}
+
+
+//vscode wants 1 based columns
+string	FixErrorColumns(string err)
+{
+	//find the first , this will be at the columns
+	int	commaPos	=err.IndexOf(',');
+	if(commaPos == -1)
+	{
+		Console.WriteLine("No Column Error: " + err);
+		//no columns?
+		return	err;
+	}
+
+	//find the dash between columns
+	int	dashPos	=err.IndexOf('-', commaPos);
+
+	//final ) pos
+	int	parPos	=err.IndexOf(")");
+
+//	Console.WriteLine("Pos:" + commaPos + "," + dashPos + "," + parPos);
+
+	string	firstCol, secCol;
+	int		startCol, endCol;
+	bool	bWorked;
+
+	//is this a column range or just one column val?
+	if(dashPos == -1)
+	{
+//		Console.WriteLine("Single Column");
+		firstCol	=err.Substring(commaPos + 1, parPos - commaPos - 1);
+
+		bWorked	=int.TryParse(firstCol, out startCol);
+		if(!bWorked)
+		{
+			Console.WriteLine("failed parsing: " + firstCol);
+			//something went wrong, just return original string
+			return	err;
+		}
+
+		//increment to match vscode's column start at one thing
+		startCol++;
+
+		//make a fake end column
+		return	err.Substring(0, commaPos) + "," + startCol + "-" + startCol + err.Substring(parPos);
+	}
+
+//	Console.WriteLine("Two Column");
+
+	firstCol	=err.Substring(commaPos + 1, dashPos - commaPos - 1);
+	secCol		=err.Substring(dashPos + 1, parPos - dashPos - 1);
+
+	bWorked	=int.TryParse(firstCol, out startCol);
+	if(!bWorked)
+	{
+		Console.WriteLine("failed parsing: " + firstCol);
+		//something went wrong, just return original string
+		return	err;
+	}
+
+	bWorked	=int.TryParse(secCol, out endCol);
+	if(!bWorked)
+	{
+		Console.WriteLine("failed parsing: " + secCol);
+		//something went wrong, just return original string
+		return	err;
+	}
+
+	//increment to match vscode's column start at one thing
+	startCol++;
+	endCol++;
+
+	return	err.Substring(0, commaPos) + "," + startCol + "-" + endCol + err.Substring(parPos);
+}
+
+
 void FireFXCProcess(string fileName, string entryPoint, string mod, string profile)
 {
 	//kompile
 	Process	proc	=new Process();
 
-	proc.StartInfo.RedirectStandardOutput	=true;
-
 	string	command	="bin/fxc64.exe " +
 		" /I Shaders/" +
 		" /E " + entryPoint +
 		" /T " + profile +
+		" /nologo" +
 		" /D " + mod + "=1" +
 		" /Fo CompiledShaders/" + mod + "/" + entryPoint + ".cso" +
 		" Shaders/" + fileName;
@@ -70,15 +157,57 @@ void FireFXCProcess(string fileName, string entryPoint, string mod, string profi
 
 	proc.StartInfo	=new ProcessStartInfo("wine64", command);
 
+	proc.StartInfo.RedirectStandardInput	=true;
+	proc.StartInfo.RedirectStandardOutput	=true;
+	proc.StartInfo.RedirectStandardError	=true;
+	proc.StartInfo.CreateNoWindow			=true;
+	proc.StartInfo.UseShellExecute			=false;
+
+	//error filters, stuff to ignore
+	List<string>	errFilters	=new List<string>();
+	errFilters.Add(":fixme:font:");
+	errFilters.Add("warning X3206:");		//this one is too common
+	errFilters.Add(":err:rpc:");			//wine spam
+	errFilters.Add("compilation failed");	//afraid this will interfere with problems tab
+
 	proc.OutputDataReceived	+=new DataReceivedEventHandler((sender, e) =>
 	{
 		if(!String.IsNullOrEmpty(e.Data))
 		{
-			Console.WriteLine(e.Data);
+			if(!e.Data.StartsWith("compilation object save succeeded;"))
+			{
+				Console.WriteLine(e.Data);
+			}
+		}
+	});
+
+	proc.ErrorDataReceived	+=new DataReceivedEventHandler((sender, e) =>
+	{
+		if(!String.IsNullOrEmpty(e.Data))
+		{
+			bool	bSkip	=false;
+			foreach(string filter in errFilters)
+			{
+				if(e.Data.Contains(filter))
+				{
+					bSkip	=true;
+					break;
+				}
+			}
+
+			if(!bSkip)
+			{
+				string	goodPath	=FixWinePaths(e.Data);
+				Console.WriteLine(FixErrorColumns(goodPath));
+			}
 		}
 	});
 
 	proc.Start();
+
+	proc.BeginOutputReadLine();
+	proc.BeginErrorReadLine();
+
 	proc.WaitForExit();
 }
 
@@ -177,6 +306,8 @@ Console.WriteLine("Reading entry points!");
 
 LoadEntryPoints();
 
+//test print
+/*
 foreach(KeyValuePair<string, List<string>> eps in mVSEntryPoints)
 {
 	Console.WriteLine("File: " + eps.Key);
@@ -185,18 +316,28 @@ foreach(KeyValuePair<string, List<string>> eps in mVSEntryPoints)
 	{
 		Console.WriteLine("\tEntryPoint: " + ep);
 	}
+}*/
+
+DirectoryInfo	di	=new DirectoryInfo(".");
+
+//first grab a list of include files, sometimes the names get mangled
+FileInfo[]	incfi	=di.GetFiles("Shaders/*.hlsli", SearchOption.TopDirectoryOnly);
+foreach(FileInfo fi in incfi)
+{
+	includeNames.Add(fi.Name);
 }
 
 //see what shaders are here
-DirectoryInfo	di	=new DirectoryInfo(".");
-
 FileInfo[]	shfi	=di.GetFiles("Shaders/*.hlsl", SearchOption.TopDirectoryOnly);
 
 List<string>	models	=new List<string>();
 
-models.Add("SM2");
-models.Add("SM4");
-models.Add("SM5");
+//args contains the macros to build with
+//should be SM2 or SM5 etc
+foreach(string arg in args)
+{
+	models.Add(arg);
+}
 
 foreach(string mod in models)
 {
@@ -219,14 +360,15 @@ foreach(string mod in models)
 		if(mVSEntryPoints.ContainsKey(shdName))
 		{
 			//compile all VS entry points
-			foreach(string ep in mVSEntryPoints[shdName])
+			List<string>	eps	=mVSEntryPoints[shdName];
+			Parallel.For(0, eps.Count, (i, state) =>
 			{
-				FireFXCProcess(fi.Name, ep, mod, profile);
-			}
+				FireFXCProcess(fi.Name, eps[i], mod, profile);
+			});
 		}
 		else
 		{
-			Console.WriteLine("No VS entry points for " + fi.Name);
+//			Console.WriteLine("No VS entry points for " + fi.Name);
 		}
 
 		//now PS entry points
@@ -234,14 +376,15 @@ foreach(string mod in models)
 		if(mPSEntryPoints.ContainsKey(shdName))
 		{
 			//compile all PS entry points
-			foreach(string ep in mPSEntryPoints[shdName])
+			List<string>	eps	=mPSEntryPoints[shdName];
+			Parallel.For(0, eps.Count, (i, state) =>
 			{
-				FireFXCProcess(fi.Name, ep, mod, profile);
-			}
+				FireFXCProcess(fi.Name, eps[i], mod, profile);
+			});
 		}
 		else
 		{
-			Console.WriteLine("No PS entry points for " + fi.Name);
+//			Console.WriteLine("No PS entry points for " + fi.Name);
 		}
 
 		//don't really use the other kinds yet

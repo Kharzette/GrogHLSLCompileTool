@@ -6,8 +6,6 @@ using System.Diagnostics;
 Dictionary<string, List<string>>	mVSEntryPoints	=new Dictionary<string, List<string>>();
 Dictionary<string, List<string>>	mPSEntryPoints	=new Dictionary<string, List<string>>();
 
-List<string>	includeNames	=new List<string>();
-
 
 string	VersionString(string sm)
 {
@@ -66,6 +64,8 @@ string	FixWinePaths(string winePath)
 
 
 //vscode wants 1 based columns
+//fxc seems to sometimes use 0, sometimes 1, very inconsistent
+//forgive all the commented out prints, I couldn't use a debugger for this
 string	FixErrorColumns(string err)
 {
 	//find the first , this will be at the columns
@@ -144,13 +144,18 @@ void FireFXCProcess(string fileName, string entryPoint, string mod, string profi
 	//kompile
 	Process	proc	=new Process();
 
+	//split off the first two letters of the profile
+	string	profDir	=profile.Substring(0, 2);
+
+	profDir	=profDir.ToUpperInvariant();
+
 	string	command	="bin/fxc64.exe " +
 		" /I Shaders/" +
 		" /E " + entryPoint +
 		" /T " + profile +
 		" /nologo" +
 		" /D " + mod + "=1" +
-		" /Fo CompiledShaders/" + mod + "/" + entryPoint + ".cso" +
+		" /Fo CompiledShaders/" + mod + "/" + profDir + "/" + entryPoint + ".cso" +
 		" Shaders/" + fileName;
 
 //	Console.WriteLine(command);
@@ -198,6 +203,13 @@ void FireFXCProcess(string fileName, string entryPoint, string mod, string profi
 			if(!bSkip)
 			{
 				string	goodPath	=FixWinePaths(e.Data);
+
+				//add the profile into the error / warning
+				//if not already present
+				if(!goodPath.Contains(profile))
+				{
+					goodPath	+=" for " + profile;
+				}
 				Console.WriteLine(FixErrorColumns(goodPath));
 			}
 		}
@@ -320,13 +332,6 @@ foreach(KeyValuePair<string, List<string>> eps in mVSEntryPoints)
 
 DirectoryInfo	di	=new DirectoryInfo(".");
 
-//first grab a list of include files, sometimes the names get mangled
-FileInfo[]	incfi	=di.GetFiles("Shaders/*.hlsli", SearchOption.TopDirectoryOnly);
-foreach(FileInfo fi in incfi)
-{
-	includeNames.Add(fi.Name);
-}
-
 //see what shaders are here
 FileInfo[]	shfi	=di.GetFiles("Shaders/*.hlsl", SearchOption.TopDirectoryOnly);
 
@@ -351,6 +356,19 @@ foreach(string mod in models)
 	{
 		Directory.CreateDirectory("CompiledShaders/" + mod);
 	}
+
+	//traditionally on windows side I'd include a few extra bytes
+	//at the beginning for the length and type of shader (vs, ps, etc)
+	//but now I think I'll use a dir for that
+	if(!Directory.Exists("CompiledShaders/" + mod + "/VS"))
+	{
+		Directory.CreateDirectory("CompiledShaders/" + mod + "/VS");
+	}
+	if(!Directory.Exists("CompiledShaders/" + mod + "/PS"))
+	{
+		Directory.CreateDirectory("CompiledShaders/" + mod + "/PS");
+	}
+	//add more if need CS etc
 
 	foreach(FileInfo fi in shfi)
 	{

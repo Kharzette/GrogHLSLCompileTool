@@ -1,0 +1,31 @@
+{
+    "tasks": [
+	{
+		"type": "shell",
+		"label": "Compile Shaders",
+		"command": "${workspaceFolder}/GrogHLSLCompileTool/bin/Release/net6.0/GrogHLSLCompileTool",
+		"args": ["SM2", "SM5"],    //add more if you want SM2 SM4 etc
+		"group": "build",
+		"options": {
+			"cwd": "/path/to/game/dir"
+		},
+		"problemMatcher": [
+		{
+			"owner": "fxc",	//I made this up, no idea if it is proper
+			"fileLocation":"relative",
+			"pattern": {
+				//gaze only briefly and indirectly at this or eldritch horrors from the great outer void may spill into our reality
+				"regexp": "(.+(?=\\())\\((.+?(?=,))\\(?,(.+?(?=[-]))[-](.+?(?=\\)))\\)\\:\\s*(warning|error)\\s*(\\w*):*\\(?(.*)",
+				"file": 1,
+				"line": 2,
+				"column": 3,
+				"endColumn": 4,	//this is ensured by the C#, it generates a fake end column if there is none
+				"severity": 5,
+				"code": 6,
+				"message": 7
+			}
+		}],
+		"detail": "hlsl build task"
+	}],
+    "version": "2.0.0"
+}

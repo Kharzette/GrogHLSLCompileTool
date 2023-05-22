@@ -83,7 +83,7 @@ string	FixErrorColumns(string err)
 	//final ) pos
 	int	parPos	=err.IndexOf(")");
 
-//	Console.WriteLine("Pos:" + commaPos + "," + dashPos + "," + parPos);
+	Console.WriteLine("Pos:" + commaPos + "," + dashPos + "," + parPos);
 
 	string	firstCol, secCol;
 	int		startCol, endCol;
@@ -92,7 +92,14 @@ string	FixErrorColumns(string err)
 	//is this a column range or just one column val?
 	if(dashPos == -1)
 	{
-//		Console.WriteLine("Single Column");
+		Console.WriteLine("Single Column");
+
+		if(parPos < 0 || commaPos < 0)
+		{
+			//something went wrong, just return original string
+			return	err;
+		}
+
 		firstCol	=err.Substring(commaPos + 1, parPos - commaPos - 1);
 
 		bWorked	=int.TryParse(firstCol, out startCol);

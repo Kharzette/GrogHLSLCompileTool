@@ -146,7 +146,7 @@ string	FixErrorColumns(string err)
 }
 
 
-void FireFXCProcess(string fileName, string entryPoint, string mod, string profile)
+void FireFXCProcess(string srcPath, string fileName, string entryPoint, string mod, string profile)
 {
 	//kompile
 	Process	proc	=new Process();
@@ -157,15 +157,16 @@ void FireFXCProcess(string fileName, string entryPoint, string mod, string profi
 	profDir	=profDir.ToUpperInvariant();
 
 	string	command	="bin/fxc64.exe " +
-		" /I Shaders/" +
+		" /I " + srcPath +"/" +
 		" /E " + entryPoint +
 		" /T " + profile +
 		" /nologo" +
 		" /D " + mod + "=1" +
 		" /Fo CompiledShaders/" + mod + "/" + profDir + "/" + entryPoint + ".cso" +
-		" Shaders/" + fileName;
+		" " + srcPath + "/" + fileName;
 
-//	Console.WriteLine(command);
+	Console.WriteLine("Compiling: " + entryPoint + " for " + mod + ":" + profile);
+	//Console.WriteLine(command);
 
 	proc.StartInfo	=new ProcessStartInfo("wine64", command);
 
@@ -272,19 +273,21 @@ void ReadEntryPoints(StreamReader sr, Dictionary<string, List<string>> dict)
 }
 
 //open entry points for VS
-void LoadEntryPoints()
+void LoadEntryPoints(string srcDir)
 {
-	if(!File.Exists("Shaders/VSEntryPoints.txt"))
+	Console.WriteLine(srcDir + "/VSEntryPoints.txt");
+
+	if(!File.Exists(srcDir + "/VSEntryPoints.txt"))
 	{
 		Console.WriteLine("No VSEntryPoints.txt!");
 		return;
 	}
-	if(!File.Exists("Shaders/PSEntryPoints.txt"))
+	if(!File.Exists(srcDir + "/PSEntryPoints.txt"))
 	{
 		return;
 	}
 
-	FileStream	fs	=new FileStream("Shaders/VSEntryPoints.txt", FileMode.Open, FileAccess.Read);
+	FileStream	fs	=new FileStream(srcDir + "/VSEntryPoints.txt", FileMode.Open, FileAccess.Read);
 	if(fs == null)
 	{
 		return;
@@ -302,7 +305,7 @@ void LoadEntryPoints()
 	sr.Close();
 	fs.Close();
 
-	fs	=new FileStream("Shaders/PSEntryPoints.txt", FileMode.Open, FileAccess.Read);
+	fs	=new FileStream(srcDir + "/PSEntryPoints.txt", FileMode.Open, FileAccess.Read);
 	if(fs == null)
 	{
 		return;
@@ -321,9 +324,39 @@ void LoadEntryPoints()
 	fs.Close();
 }
 
+if(args.Length < 2)
+{
+	Console.WriteLine("Usage: tool shaderSourceDir SM5 (or whichever models you want)");
+	return;
+}
+
+string	sourcePath	=args[0];
+
+Console.WriteLine("Full shader source path: " + sourcePath);
+
+Console.WriteLine("Current Dir: " + Directory.GetCurrentDirectory());
+
+string	relSrc	=Path.GetRelativePath(".", sourcePath);
+
+Console.WriteLine("Relative shader source path: " + relSrc);
+
+List<string>	models	=new List<string>();
+
+//args contains the macros to build with
+//should be SM2 or SM5 etc
+foreach(string arg in args)
+{
+	if(arg == args[0])
+	{
+		continue;	//skip 0
+	}
+
+	models.Add(arg);
+}
+
 Console.WriteLine("Reading entry points!");
 
-LoadEntryPoints();
+LoadEntryPoints(relSrc);
 
 //test print
 /*
@@ -337,19 +370,10 @@ foreach(KeyValuePair<string, List<string>> eps in mVSEntryPoints)
 	}
 }*/
 
-DirectoryInfo	di	=new DirectoryInfo(".");
+DirectoryInfo	di	=new DirectoryInfo(relSrc);
 
 //see what shaders are here
-FileInfo[]	shfi	=di.GetFiles("Shaders/*.hlsl", SearchOption.TopDirectoryOnly);
-
-List<string>	models	=new List<string>();
-
-//args contains the macros to build with
-//should be SM2 or SM5 etc
-foreach(string arg in args)
-{
-	models.Add(arg);
-}
+FileInfo[]	shfi	=di.GetFiles("*.hlsl", SearchOption.TopDirectoryOnly);
 
 foreach(string mod in models)
 {
@@ -388,7 +412,7 @@ foreach(string mod in models)
 			List<string>	eps	=mVSEntryPoints[shdName];
 			Parallel.For(0, eps.Count, (i, state) =>
 			{
-				FireFXCProcess(fi.Name, eps[i], mod, profile);
+				FireFXCProcess(relSrc, fi.Name, eps[i], mod, profile);
 			});
 		}
 		else
@@ -404,7 +428,7 @@ foreach(string mod in models)
 			List<string>	eps	=mPSEntryPoints[shdName];
 			Parallel.For(0, eps.Count, (i, state) =>
 			{
-				FireFXCProcess(fi.Name, eps[i], mod, profile);
+				FireFXCProcess(relSrc, fi.Name, eps[i], mod, profile);
 			});
 		}
 		else
@@ -414,6 +438,14 @@ foreach(string mod in models)
 
 		//don't really use the other kinds yet
 	}
+
+	Console.WriteLine("Copying entry points and layout files to CompiledShaders...");
+
+	File.Copy(relSrc + "/VSEntryPoints.txt", "CompiledShaders/VSEntryPoints.txt", true);
+	File.Copy(relSrc + "/PSEntryPoints.txt", "CompiledShaders/PSEntryPoints.txt", true);
+	File.Copy(relSrc + "/EntryLayouts.txt", "CompiledShaders/EntryLayouts.txt", true);
+
+	Console.WriteLine("Done!");
 }
 
 enum	ShaderEntryType

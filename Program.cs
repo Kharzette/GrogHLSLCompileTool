@@ -179,6 +179,7 @@ void FireFXCProcess(string srcPath, string fileName, string entryPoint, string m
 	//error filters, stuff to ignore
 	List<string>	errFilters	=new List<string>();
 	errFilters.Add(":fixme:font:");
+	errFilters.Add(":fixme:wineusb:");		//damn oculus sensors
 	errFilters.Add("warning X3206:");		//this one is too common
 	errFilters.Add(":err:rpc:");			//wine spam
 	errFilters.Add("compilation failed");	//afraid this will interfere with problems tab

@@ -168,7 +168,7 @@ void FireFXCProcess(string srcPath, string fileName, string entryPoint, string m
 	Console.WriteLine("Compiling: " + entryPoint + " for " + mod + ":" + profile);
 	//Console.WriteLine(command);
 
-	proc.StartInfo	=new ProcessStartInfo("wine64", command);
+	proc.StartInfo	=new ProcessStartInfo("wine", command);
 
 	proc.StartInfo.RedirectStandardInput	=true;
 	proc.StartInfo.RedirectStandardOutput	=true;

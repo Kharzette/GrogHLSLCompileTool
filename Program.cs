@@ -5,6 +5,7 @@ using System.Diagnostics;
 //entry points for shaders
 Dictionary<string, List<string>>	mVSEntryPoints	=new Dictionary<string, List<string>>();
 Dictionary<string, List<string>>	mPSEntryPoints	=new Dictionary<string, List<string>>();
+Dictionary<string, List<string>>	mCSEntryPoints	=new Dictionary<string, List<string>>();
 
 
 string	VersionString(string sm)
@@ -58,8 +59,20 @@ string	FixWinePaths(string winePath)
 	//relative
 	//locate final \
 	int	slashPos	=winePath.LastIndexOf('\\');
+
+	//in my projects, usually GrogLibs is a submodule,
+	//so the path to the shader file would be GrogLibs/ShaderLib/blah,
+	//but also sometimes I build just the libs in which case it is
+	//just like ShaderLib/blah
+
+#if false	//running from GrogLibs
+	string	path	="ShaderLib/" + winePath.Substring(slashPos + 1);
+#else		//running with GrogLibs submodule
+	string	path	="GrogLibsC/ShaderLib/" + winePath.Substring(slashPos + 1);
+#endif
+
 //	return	"${workspaceFolder}/ShaderLib/" + winePath.Substring(slashPos + 1);
-	return	"ShaderLib/" + winePath.Substring(slashPos + 1);
+	return	path;
 }
 
 
@@ -211,6 +224,7 @@ void FireFXCProcess(string srcPath, string fileName, string entryPoint, string m
 
 			if(!bSkip)
 			{
+
 				string	goodPath	=FixWinePaths(e.Data);
 
 				//add the profile into the error / warning
@@ -323,6 +337,29 @@ void LoadEntryPoints(string srcDir)
 
 	sr.Close();
 	fs.Close();
+
+	if(!File.Exists(srcDir + "/CSEntryPoints.txt"))
+	{
+		return;
+	}
+
+	fs	=new FileStream(srcDir + "/CSEntryPoints.txt", FileMode.Open, FileAccess.Read);
+	if(fs == null)
+	{
+		return;
+	}
+
+	sr	=new StreamReader(fs);
+	if(sr == null)
+	{
+		fs.Close();
+		return;
+	}
+
+	ReadEntryPoints(sr, mCSEntryPoints);
+
+	sr.Close();
+	fs.Close();
 }
 
 if(args.Length < 2)
@@ -400,6 +437,10 @@ foreach(string mod in models)
 	{
 		Directory.CreateDirectory("CompiledShaders/" + mod + "/PS");
 	}
+	if(!Directory.Exists("CompiledShaders/" + mod + "/CS"))
+	{
+		Directory.CreateDirectory("CompiledShaders/" + mod + "/CS");
+	}
 	//add more if need CS etc
 
 	foreach(FileInfo fi in shfi)
@@ -437,6 +478,22 @@ foreach(string mod in models)
 //			Console.WriteLine("No PS entry points for " + fi.Name);
 		}
 
+		//now CS entry points
+		profile	=ProfileFromSM(mod, ShaderEntryType.Compute);
+		if(mCSEntryPoints.ContainsKey(shdName))
+		{
+			//compile all PS entry points
+			List<string>	eps	=mCSEntryPoints[shdName];
+			Parallel.For(0, eps.Count, (i, state) =>
+			{
+				FireFXCProcess(relSrc, fi.Name, eps[i], mod, profile);
+			});
+		}
+		else
+		{
+//			Console.WriteLine("No PS entry points for " + fi.Name);
+		}
+
 		//don't really use the other kinds yet
 	}
 
@@ -444,6 +501,7 @@ foreach(string mod in models)
 
 	File.Copy(relSrc + "/VSEntryPoints.txt", "CompiledShaders/VSEntryPoints.txt", true);
 	File.Copy(relSrc + "/PSEntryPoints.txt", "CompiledShaders/PSEntryPoints.txt", true);
+	File.Copy(relSrc + "/CSEntryPoints.txt", "CompiledShaders/CSEntryPoints.txt", true);
 	File.Copy(relSrc + "/EntryLayouts.txt", "CompiledShaders/EntryLayouts.txt", true);
 
 	Console.WriteLine("Done!");

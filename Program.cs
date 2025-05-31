@@ -413,6 +413,16 @@ DirectoryInfo	di	=new DirectoryInfo(relSrc);
 //see what shaders are here
 FileInfo[]	shfi	=di.GetFiles("*.hlsl", SearchOption.TopDirectoryOnly);
 
+if(shfi.Length == 0)
+{
+	Console.WriteLine("No shaders found!");
+	return;
+}
+
+//Blast the old directory.  This is needed because old compiled
+//shaders will hang out there if the names changed.
+Directory.Delete("CompiledShaders", true);
+
 foreach(string mod in models)
 {
 	//ensure directories are set up
